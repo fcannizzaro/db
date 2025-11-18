@@ -9,7 +9,7 @@ title: TransactionWithMutations
 type TransactionWithMutations<T, TOperation> = Transaction<T> & object;
 ```
 
-Defined in: [packages/db/src/types.ts:139](https://github.com/TanStack/db/blob/main/packages/db/src/types.ts#L139)
+Defined in: [packages/db/src/types.ts:139](https://github.com/fcannizzaro/db/blob/main/packages/db/src/types.ts#L139)
 
 Utility type for a Transaction with at least one mutation
 This is used internally by the Transaction.commit method
