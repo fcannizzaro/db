@@ -1,4 +1,5 @@
 import { serialize } from './pg-serializer'
+import { dedupeParams, dedupeWhere } from './sql-minimization'
 import type { SubsetParams } from '@electric-sql/client'
 import type { IR, LoadSubsetOptions } from '@tanstack/db'
 
@@ -33,27 +34,15 @@ export function compileSQL<T>(options: LoadSubsetOptions): SubsetParams {
     compiledSQL.where = `true = true`
   }
 
-  // dedupe params and remap param placeholders
-  const dedupedParams = new Map<unknown, number>()
-  const placeholderMapping = new Map<number, number>()
+  // Deduplicate params and update placeholders in WHERE clause
+  const deduped = dedupeParams(params, compiledSQL.where)
 
-  params.forEach((param, idx) => {
-    if (!dedupedParams.has(param)) {
-      dedupedParams.set(param, dedupedParams.size)
-    }
-    placeholderMapping.set(idx, dedupedParams.get(param)!)
-  })
-
-  // replace old param placeholders with new unique ones
-  compiledSQL.where = compiledSQL.where?.replace(/\$(\d+)/g, (_, p1) => {
-    const originalIndex = parseInt(p1, 10) - 1
-    const uniqueIndex = placeholderMapping.get(originalIndex)!
-    return `$${uniqueIndex + 1}`
-  })
+  // Deduplicate WHERE clauses
+  compiledSQL.where = dedupeWhere(deduped.where)
 
   // Serialize the values in the params array into PG formatted strings
   // and transform the array into a Record<string, string>
-  const paramsRecord = Array.from(dedupedParams.entries()).reduce(
+  const paramsRecord = deduped.params.reduce(
     (acc, [param, index]) => {
       const serialized = serialize(param)
       // Only include non-empty values in params

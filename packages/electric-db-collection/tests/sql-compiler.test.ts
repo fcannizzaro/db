@@ -3,18 +3,17 @@ import { compileSQL } from '../src/sql-compiler'
 import type { IR } from '@tanstack/db'
 
 // Helper to create a value expression
-function val<T>(value: T): IR.BasicExpression<T> {
+export function val<T>(value: T): IR.BasicExpression<T> {
   return { type: `val`, value } as IR.BasicExpression<T>
 }
 
 // Helper to create a reference expression
-function ref(...path: Array<string>): IR.BasicExpression {
+export function ref(...path: Array<string>): IR.BasicExpression {
   return { type: `ref`, path } as IR.BasicExpression
 }
 
 // Helper to create a function expression
-
-function func(name: string, args: Array<any>): IR.BasicExpression<boolean> {
+export function func(name: string, args: Array<any>): IR.BasicExpression<boolean> {
   return { type: `func`, name, args } as IR.BasicExpression<boolean>
 }
 
@@ -309,25 +308,48 @@ describe(`sql-compiler`, () => {
       })
     })
 
-    describe.only(`subset query deduplication`, () => {
+    describe(`subset query deduplication`, () => {
       it(`should remove duplicate params`, () => {
         const result = compileSQL({
-          where: func(`and`, [
-            func(`eq`, [ref(`a`), val("true")]),
-            func(`eq`, [ref(`b`), val("5")]),
-            func(`gt`, [ref(`c`), val("100")]),
-            func(`lt`, [ref(`d`), val("5")]),
-            func(`eq`, [ref(`e`), val("true")]),
-            func(`eq`, [ref(`f`), val("false")]),
+          where: func(`or`, [
+            // live query 1
+            func(`eq`, [ref(`a`), val("5")]),
+            // live query 2
+            func(`gt`, [ref(`b`), val("5")]),
+            // live query 3
+            func(`eq`, [ref(`c`), val("true")]),
+            // live query 4
+            func(`not`, [func(`lt`, [ref(`d`), val("5")])]),
+            // live query 5
+            func(`eq`, [ref(`e`), val("text")]),
           ]),
         })
 
         const paramsKeys = Object.keys(result.params ?? {})
-        expect(paramsKeys).toHaveLength(4)
-        expect(paramsKeys).toMatchObject(["1", "2", "3", "4"])
-        expect(result.where).toBe(`("a" = $1) AND ("b" = $2) AND ("c" > $3) AND ("d" < $2) AND ("e" = $1) AND ("f" = $4)`)
+        expect(paramsKeys).toHaveLength(3)
+        expect(paramsKeys).toMatchObject(["1", "2", "3"])
+        expect(result.where).toBe(`("a" = $1) OR ("b" > $1) OR ("c" = $2) OR (NOT ("d" < $1)) OR ("e" = $3)`)
+      })
+
+      it(`should remove duplicate where clauses`, () => {
+        const result = compileSQL({
+          where: func(`or`, [
+            // live query 1
+            func(`eq`, [ref(`a`), val("true")]),
+            // live query 2
+            func(`eq`, [ref(`b`), val("true")]),
+            // live query 3
+            func(`eq`, [ref(`a`), val("true")]),
+            // live query 4
+            func(`eq`, [ref(`a`), val("false")]),
+          ]),
+        })
+
+        const paramsKeys = Object.keys(result.params ?? {})
+        expect(paramsKeys).toHaveLength(2)
+        expect(paramsKeys).toMatchObject(["1", "2"])
+        expect(result.where).toBe(`("a" = $1) OR ("b" = $1) OR ("a" = $2)`)
       })
     })
-
   })
 })
