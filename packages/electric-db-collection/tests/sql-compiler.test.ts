@@ -308,5 +308,26 @@ describe(`sql-compiler`, () => {
         expect(result.limit).toBe(10)
       })
     })
+
+    describe.only(`subset query deduplication`, () => {
+      it(`should remove duplicate params`, () => {
+        const result = compileSQL({
+          where: func(`and`, [
+            func(`eq`, [ref(`a`), val("true")]),
+            func(`eq`, [ref(`b`), val("5")]),
+            func(`gt`, [ref(`c`), val("100")]),
+            func(`lt`, [ref(`d`), val("5")]),
+            func(`eq`, [ref(`e`), val("true")]),
+            func(`eq`, [ref(`f`), val("false")]),
+          ]),
+        })
+
+        const paramsKeys = Object.keys(result.params ?? {})
+        expect(paramsKeys).toHaveLength(4)
+        expect(paramsKeys).toMatchObject(["1", "2", "3", "4"])
+        expect(result.where).toBe(`("a" = $1) AND ("b" = $2) AND ("c" > $3) AND ("d" < $2) AND ("e" = $1) AND ("f" = $4)`)
+      })
+    })
+
   })
 })

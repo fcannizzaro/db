@@ -33,10 +33,28 @@ export function compileSQL<T>(options: LoadSubsetOptions): SubsetParams {
     compiledSQL.where = `true = true`
   }
 
+  // dedupe params and remap param placeholders
+  const dedupedParams = new Map<unknown, number>()
+  const placeholderMapping = new Map<number, number>()
+
+  params.forEach((param, idx) => {
+    if (!dedupedParams.has(param)) {
+      dedupedParams.set(param, dedupedParams.size)
+    }
+    placeholderMapping.set(idx, dedupedParams.get(param)!)
+  })
+
+  // replace old param placeholders with new unique ones
+  compiledSQL.where = compiledSQL.where?.replace(/\$(\d+)/g, (_, p1) => {
+    const originalIndex = parseInt(p1, 10) - 1
+    const uniqueIndex = placeholderMapping.get(originalIndex)!
+    return `$${uniqueIndex + 1}`
+  })
+
   // Serialize the values in the params array into PG formatted strings
   // and transform the array into a Record<string, string>
-  const paramsRecord = params.reduce(
-    (acc, param, index) => {
+  const paramsRecord = Array.from(dedupedParams.entries()).reduce(
+    (acc, [param, index]) => {
       const serialized = serialize(param)
       // Only include non-empty values in params
       // Empty strings from null/undefined should be omitted
@@ -152,9 +170,9 @@ function compileFunction(
       // Users should use isNull() or isUndefined() to check for null values
       throw new Error(
         `Cannot use null/undefined value with '${name}' operator. ` +
-          `Comparisons with null always evaluate to UNKNOWN in SQL. ` +
-          `Use isNull() or isUndefined() to check for null values, ` +
-          `or filter out null values before building the query.`,
+        `Comparisons with null always evaluate to UNKNOWN in SQL. ` +
+        `Use isNull() or isUndefined() to check for null values, ` +
+        `or filter out null values before building the query.`,
       )
     }
   }
